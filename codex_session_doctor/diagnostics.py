@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from .models import Diagnosis, SessionMeta, ThreadRecord
+from .models import CurrentConfig, Diagnosis, SessionMeta, ThreadRecord
 from .paths import normalize_path_for_compare
 
 
@@ -15,6 +15,7 @@ def diagnose_threads(
     threads: list[ThreadRecord],
     session_meta: dict[str, SessionMeta],
     session_index_ids: set[str],
+    current_config: CurrentConfig | None = None,
     project: str | None = None,
     include_subagents: bool = False,
 ) -> list[Diagnosis]:
@@ -43,12 +44,49 @@ def diagnose_threads(
         if thread.id not in session_index_ids:
             output.append(Diagnosis("missing-index-entry", thread.id, "Thread is missing from session_index.jsonl.", "fix-index"))
 
+        if current_config and current_config.model_provider and thread.model_provider != current_config.model_provider:
+            output.append(
+                Diagnosis(
+                    "provider-mismatch",
+                    thread.id,
+                    f"SQLite model_provider differs from current config: {thread.model_provider} != {current_config.model_provider}",
+                    "fix-provider-model",
+                )
+            )
+        if current_config and current_config.model and thread.model != current_config.model:
+            output.append(
+                Diagnosis(
+                    "model-mismatch",
+                    thread.id,
+                    f"SQLite model differs from current config: {thread.model} != {current_config.model}",
+                    "fix-provider-model",
+                )
+            )
+
         meta = session_meta.get(thread.id)
         if meta:
             db_cwd = normalize_path_for_compare(thread.cwd)
             meta_cwd = normalize_path_for_compare(meta.cwd)
             if db_cwd and meta_cwd and db_cwd != meta_cwd:
                 output.append(Diagnosis("cwd-mismatch", thread.id, f"SQLite cwd differs from rollout metadata cwd: {thread.cwd} != {meta.cwd}", "fix-cwd"))
+            if current_config and current_config.model_provider and meta.model_provider != current_config.model_provider:
+                output.append(
+                    Diagnosis(
+                        "session-provider-mismatch",
+                        thread.id,
+                        f"Session model_provider differs from current config: {meta.model_provider} != {current_config.model_provider}",
+                        "fix-provider-model",
+                    )
+                )
+            if current_config and current_config.model and meta.model != current_config.model:
+                output.append(
+                    Diagnosis(
+                        "session-model-mismatch",
+                        thread.id,
+                        f"Session model differs from current config: {meta.model} != {current_config.model}",
+                        "fix-provider-model",
+                    )
+                )
         elif thread.rollout_exists:
             output.append(Diagnosis("missing-session-meta", thread.id, "Rollout file has no readable session_meta first line.", "manual"))
 
@@ -158,6 +196,10 @@ def describe_issue_code(code: str) -> str:
         "missing-index-entry": "缺少侧边栏索引",
         "cwd-mismatch": "项目目录不一致",
         "missing-session-meta": "缺少会话元数据",
+        "provider-mismatch": "Provider 不一致",
+        "model-mismatch": "模型不一致",
+        "session-provider-mismatch": "会话文件 Provider 不一致",
+        "session-model-mismatch": "会话文件模型不一致",
     }.get(code, code)
 
 
@@ -169,6 +211,10 @@ def translate_issue_message(code: str, fallback: str) -> str:
         "missing-index-entry": "这个会话没有写入 session_index.jsonl。",
         "cwd-mismatch": "SQLite 里的项目目录和会话文件首行元数据不一致。",
         "missing-session-meta": "会话文件第一行没有可读取的 session_meta。",
+        "provider-mismatch": "SQLite 里的 model_provider 和当前 Codex 配置不一致。",
+        "model-mismatch": "SQLite 里的 model 和当前 Codex 配置不一致。",
+        "session-provider-mismatch": "会话文件首行 model_provider 和当前 Codex 配置不一致。",
+        "session-model-mismatch": "会话文件首行 model 和当前 Codex 配置不一致。",
     }.get(code, fallback)
 
 
@@ -177,5 +223,6 @@ def describe_repair(repair: str) -> str:
         "fix-preview": "补齐预览",
         "fix-index": "合并索引",
         "fix-cwd": "修正项目目录",
+        "fix-provider-model": "同步 Provider/模型",
         "manual": "需要手动检查",
     }.get(repair, repair)

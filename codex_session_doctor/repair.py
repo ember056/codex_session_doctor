@@ -12,7 +12,7 @@ from pathlib import Path
 from .io import detect_newline, read_first_line_and_rest, write_first_line_json, write_text_atomic
 from .models import ThreadRecord
 from .paths import CodexPaths, add_windows_long_path_prefix, normalize_path_for_compare
-from .scanner import connect_db, load_threads
+from .scanner import connect_db, get_thread_columns, load_session_meta, load_threads
 
 
 def build_preview(thread: ThreadRecord, limit: int = 500) -> str:
@@ -26,7 +26,7 @@ def repair_previews(paths: CodexPaths, project: str | None = None, dry_run: bool
     用首条用户消息或标题补齐空 preview，避免侧边栏过滤这些会话。
     """
     threads = load_threads(paths)
-    project_cwd = add_windows_long_path_prefix(str(Path(project))) if project else None
+    project_key = normalize_path_for_compare(project) if project else None
     changed: list[str] = []
     conn = connect_db(paths)
     try:
@@ -35,7 +35,7 @@ def repair_previews(paths: CodexPaths, project: str | None = None, dry_run: bool
                 continue
             if thread.is_subagent_review and not include_subagents:
                 continue
-            if project_cwd and thread.cwd != project_cwd:
+            if project_key and normalize_path_for_compare(thread.cwd) != project_key:
                 continue
             preview = build_preview(thread)
             if not preview:
@@ -167,18 +167,77 @@ def _update_session_meta_cwd(path: Path, target_cwd: str, dry_run: bool) -> bool
     return True
 
 
-def set_provider_model(paths: CodexPaths, provider: str, model: str, dry_run: bool = True) -> list[str]:
+def sync_provider_model(paths: CodexPaths, provider: str | None, model: str | None, dry_run: bool = True) -> list[str]:
     changed: list[str] = []
+    if not provider and not model:
+        return changed
+
+    threads = load_threads(paths)
+    db_mismatch_ids: set[str] = set()
     conn = connect_db(paths)
     try:
-        count = conn.execute(
-            "SELECT COUNT(*) FROM threads WHERE model_provider IS NULL OR model_provider <> ? OR model IS NULL OR model <> ?",
-            (provider, model),
-        ).fetchone()[0]
-        changed.append(f"threads provider/model <- {provider}/{model} ({count} rows)")
-        if not dry_run:
-            conn.execute("UPDATE threads SET model_provider = ?, model = ?", (provider, model))
-            conn.commit()
+        columns = get_thread_columns(conn)
+        set_parts: list[str] = []
+        set_values: list[str] = []
+        where_parts: list[str] = []
+        where_values: list[str] = []
+
+        if provider:
+            set_parts.append("model_provider = ?")
+            set_values.append(provider)
+            where_parts.append("model_provider IS NULL OR model_provider <> ?")
+            where_values.append(provider)
+            db_mismatch_ids.update(thread.id for thread in threads if thread.model_provider != provider)
+
+        if model and "model" in columns:
+            set_parts.append("model = ?")
+            set_values.append(model)
+            where_parts.append("model IS NULL OR model <> ?")
+            where_values.append(model)
+            db_mismatch_ids.update(thread.id for thread in threads if thread.model != model)
+
+        if set_parts and where_parts:
+            changed.append(f"threads provider/model <- {provider or '(unchanged)'}/{model or '(unchanged)'} ({len(db_mismatch_ids)} rows)")
+            if not dry_run:
+                where_sql = " OR ".join(f"({part})" for part in where_parts)
+                conn.execute(f"UPDATE threads SET {', '.join(set_parts)} WHERE {where_sql}", (*set_values, *where_values))
+                conn.commit()
     finally:
         conn.close()
+
+    updated_session_files = 0
+    for meta in load_session_meta(paths).values():
+        if _update_session_meta_provider_model(meta.path, provider, model, dry_run):
+            updated_session_files += 1
+    changed.append(f"session_meta provider/model <- {provider or '(unchanged)'}/{model or '(unchanged)'} ({updated_session_files} files)")
+    return changed
+
+
+def set_provider_model(paths: CodexPaths, provider: str, model: str, dry_run: bool = True) -> list[str]:
+    return sync_provider_model(paths, provider, model, dry_run=dry_run)
+
+
+def _update_session_meta_provider_model(path: Path, provider: str | None, model: str | None, dry_run: bool) -> bool:
+    first_line, rest = read_first_line_and_rest(path)
+    if not first_line:
+        return False
+    try:
+        item = json.loads(first_line.rstrip(b"\r\n").decode("utf-8"))
+    except json.JSONDecodeError:
+        return False
+    if item.get("type") != "session_meta":
+        return False
+    payload = item.get("payload")
+    if not isinstance(payload, dict):
+        return False
+
+    changed = False
+    if provider and payload.get("model_provider") != provider:
+        payload["model_provider"] = provider
+        changed = True
+    if model and payload.get("model") != model:
+        payload["model"] = model
+        changed = True
+    if changed and not dry_run:
+        write_first_line_json(path, item, rest, detect_newline(first_line))
     return changed

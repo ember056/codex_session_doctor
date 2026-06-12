@@ -85,9 +85,13 @@ Use the command line:
 ```powershell
 py -3 -m codex_session_doctor scan
 py -3 -m codex_session_doctor diagnose
-py -3 -m codex_session_doctor repair --dry-run --fix-preview --fix-index
-py -3 -m codex_session_doctor repair --fix-preview --fix-index --yes
+py -3 -m codex_session_doctor repair --dry-run --sync-current --fix-preview --fix-index
+py -3 -m codex_session_doctor repair --sync-current --fix-preview --fix-index --yes
 ```
+
+If `py -3` is not available, use `python -m codex_session_doctor ...`.
+
+如果系统没有 `py -3`，可以改用 `python -m codex_session_doctor ...`。
 
 Open the cross-platform Tkinter GUI:
 
@@ -166,6 +170,8 @@ The primary Windows GUI is `launch_ui.ps1`. It follows a practical recovery-tool
   操作日志
 - dry-run before real repair  
   正式修复前可预览
+- sync current Provider/model  
+  同步当前 Provider/模型
 - backup directory and desktop shortcut buttons  
   备份目录和桌面入口按钮
 
@@ -178,4 +184,3 @@ This tool modifies local Codex Desktop metadata only. It does not upload convers
 Close Codex Desktop before applying repairs when possible. Windows may lock active rollout files while Codex is writing to them.
 
 建议正式修复前先退出 Codex Desktop。Windows 可能会锁定正在写入的会话文件。
-

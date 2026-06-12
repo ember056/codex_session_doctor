@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 
@@ -15,7 +16,7 @@ def create_backup(paths: CodexPaths) -> Path:
     backup_root.mkdir(parents=True, exist_ok=True)
 
     if paths.db_path.exists():
-        shutil.copy2(paths.db_path, backup_root / paths.db_path.name)
+        backup_database(paths.db_path, backup_root / paths.db_path.name)
     if paths.session_index_path.exists():
         shutil.copy2(paths.session_index_path, backup_root / paths.session_index_path.name)
 
@@ -39,3 +40,12 @@ def create_backup(paths: CodexPaths) -> Path:
     )
     return backup_root
 
+
+def backup_database(source_path: Path, target_path: Path) -> None:
+    source = sqlite3.connect(f"file:{source_path}?mode=ro", uri=True, timeout=30)
+    target = sqlite3.connect(target_path, timeout=30)
+    try:
+        source.backup(target)
+    finally:
+        target.close()
+        source.close()

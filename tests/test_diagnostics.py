@@ -1,7 +1,7 @@
 import unittest
 
 from codex_session_doctor.diagnostics import format_project_report, group_diagnoses_by_project, diagnose_threads
-from codex_session_doctor.models import SessionMeta, ThreadRecord
+from codex_session_doctor.models import CurrentConfig, SessionMeta, ThreadRecord
 
 
 def thread(**overrides):
@@ -40,6 +40,20 @@ class DiagnosticTests(unittest.TestCase):
         meta = SessionMeta("t1", __file__, r"C:\Other", "0_1", "gpt-5.5")
         result = diagnose_threads([thread()], {"t1": meta}, {"t1"})
         self.assertIn("cwd-mismatch", [item.code for item in result])
+
+    def test_provider_model_mismatch_is_diagnosed(self):
+        meta = SessionMeta("t1", __file__, r"C:\Project", "old-provider", "old-model")
+        result = diagnose_threads(
+            [thread(model_provider="old-provider", model="old-model")],
+            {"t1": meta},
+            {"t1"},
+            current_config=CurrentConfig(model_provider="0_1", model="gpt-5.5"),
+        )
+        codes = [item.code for item in result]
+        self.assertIn("provider-mismatch", codes)
+        self.assertIn("model-mismatch", codes)
+        self.assertIn("session-provider-mismatch", codes)
+        self.assertIn("session-model-mismatch", codes)
 
     def test_subagent_is_skipped_by_default(self):
         result = diagnose_threads([thread(source='{"subagent":{"other":"guardian"}}', preview="")], {}, set())

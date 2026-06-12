@@ -6,10 +6,11 @@ from __future__ import annotations
 """
 
 import json
+import re
 import sqlite3
 from pathlib import Path
 
-from .models import SessionMeta, ThreadRecord
+from .models import CurrentConfig, SessionMeta, ThreadRecord
 from .paths import CodexPaths
 
 
@@ -20,12 +21,28 @@ def connect_db(paths: CodexPaths) -> sqlite3.Connection:
     return conn
 
 
+def get_thread_columns(conn: sqlite3.Connection) -> set[str]:
+    return {str(row["name"]) for row in conn.execute("PRAGMA table_info(threads)").fetchall()}
+
+
+def load_current_config(paths: CodexPaths) -> CurrentConfig:
+    if not paths.config_path.exists():
+        return CurrentConfig(model_provider=None, model=None)
+    text = paths.config_path.read_text(encoding="utf-8", errors="replace")
+    provider_match = re.search(r'(?m)^\s*model_provider\s*=\s*"([^"]+)"', text)
+    model_match = re.search(r'(?m)^\s*model\s*=\s*"([^"]+)"', text)
+    return CurrentConfig(
+        model_provider=provider_match.group(1) if provider_match else None,
+        model=model_match.group(1) if model_match else None,
+    )
+
+
 def load_threads(paths: CodexPaths) -> list[ThreadRecord]:
     if not paths.db_path.exists():
         return []
     conn = connect_db(paths)
     try:
-        columns = {row[1] for row in conn.execute("PRAGMA table_info(threads)").fetchall()}
+        columns = get_thread_columns(conn)
         if not columns:
             return []
         select_parts = [
@@ -35,11 +52,14 @@ def load_threads(paths: CodexPaths) -> list[ThreadRecord]:
             "coalesce(rollout_path, '') as rollout_path",
             "coalesce(source, '') as source",
             "coalesce(model_provider, '') as model_provider",
-            "model",
             "coalesce(archived, 0) as archived",
             "coalesce(updated_at, 0) as updated_at",
             "coalesce(first_user_message, '') as first_user_message",
         ]
+        if "model" in columns:
+            select_parts.append("model")
+        else:
+            select_parts.append("NULL as model")
         if "preview" in columns:
             select_parts.append("coalesce(preview, '') as preview")
         else:

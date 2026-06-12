@@ -52,14 +52,16 @@ py -3 -m codex_session_doctor diagnose
 预览修复，不写入：
 
 ```powershell
-py -3 -m codex_session_doctor repair --dry-run --fix-preview --fix-index
+py -3 -m codex_session_doctor repair --dry-run --sync-current --fix-preview --fix-index
 ```
 
 正式修复：
 
 ```powershell
-py -3 -m codex_session_doctor repair --fix-preview --fix-index --yes
+py -3 -m codex_session_doctor repair --sync-current --fix-preview --fix-index --yes
 ```
+
+如果系统没有 `py -3`，可以改用 `python -m codex_session_doctor ...`。
 
 ## 安全机制
 
@@ -86,6 +88,7 @@ py -3 -m codex_session_doctor repair --fix-preview --fix-index --yes
 - 生成诊断报告
 - 预览修复
 - 开始修复
+- 同步当前 Provider/模型
 - 按项目分组的问题列表
 - 诊断报告
 - 操作日志
@@ -104,4 +107,3 @@ gui        打开 Tkinter 图形界面
 ## 说明
 
 本工具只修改本机 Codex Desktop 元数据，不上传对话、不调用 OpenAI API，也不会修改项目源码。
-

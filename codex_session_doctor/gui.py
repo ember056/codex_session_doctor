@@ -16,8 +16,8 @@ from tkinter import messagebox, ttk
 from .backup import create_backup
 from .diagnostics import describe_issue_code, diagnose_threads, format_project_report, group_diagnoses_by_project, summarize_threads
 from .paths import resolve_paths
-from .repair import rebuild_session_index, repair_previews
-from .scanner import load_session_index_ids, load_session_meta, load_threads
+from .repair import rebuild_session_index, repair_previews, sync_provider_model
+from .scanner import load_current_config, load_session_index_ids, load_session_meta, load_threads
 
 
 class SessionDoctorApp:
@@ -35,6 +35,7 @@ class SessionDoctorApp:
         self.summary_var = tk.StringVar(value="正在读取本地 Codex 历史...")
         self.fix_preview_var = tk.BooleanVar(value=True)
         self.fix_index_var = tk.BooleanVar(value=True)
+        self.sync_current_var = tk.BooleanVar(value=True)
 
         self._build_ui()
         self._poll_worker_queue()
@@ -109,12 +110,13 @@ class SessionDoctorApp:
 
         bottom = ttk.Frame(self.root, padding=(16, 0, 16, 12))
         bottom.grid(row=3, column=0, sticky="ew")
-        bottom.columnconfigure(4, weight=1)
-        ttk.Checkbutton(bottom, text="补齐侧边栏预览", variable=self.fix_preview_var).grid(row=0, column=0, sticky="w", padx=(0, 16))
-        ttk.Checkbutton(bottom, text="合并侧边栏索引", variable=self.fix_index_var).grid(row=0, column=1, sticky="w", padx=(0, 16))
-        ttk.Button(bottom, text="打开备份目录", command=self.open_backup_dir).grid(row=0, column=2, padx=(0, 16))
-        ttk.Label(bottom, text="真正修复前会自动备份。建议先退出 Codex Desktop。", foreground="#6b7280").grid(row=0, column=3, sticky="w")
-        ttk.Label(bottom, textvariable=self.status_var).grid(row=0, column=4, sticky="e")
+        bottom.columnconfigure(5, weight=1)
+        ttk.Checkbutton(bottom, text="同步当前 Provider/模型", variable=self.sync_current_var).grid(row=0, column=0, sticky="w", padx=(0, 16))
+        ttk.Checkbutton(bottom, text="补齐侧边栏预览", variable=self.fix_preview_var).grid(row=0, column=1, sticky="w", padx=(0, 16))
+        ttk.Checkbutton(bottom, text="合并侧边栏索引", variable=self.fix_index_var).grid(row=0, column=2, sticky="w", padx=(0, 16))
+        ttk.Button(bottom, text="打开备份目录", command=self.open_backup_dir).grid(row=0, column=3, padx=(0, 16))
+        ttk.Label(bottom, text="真正修复前会自动备份。建议先退出 Codex Desktop。", foreground="#6b7280").grid(row=0, column=4, sticky="w")
+        ttk.Label(bottom, textvariable=self.status_var).grid(row=0, column=5, sticky="e")
 
     def refresh_paths(self) -> None:
         self.paths = resolve_paths(self.codex_home_var.get().strip() or None)
@@ -129,7 +131,7 @@ class SessionDoctorApp:
         self._run_background("dry-run", lambda: self._repair_worker(dry_run=True))
 
     def run_repair(self) -> None:
-        if not self.fix_preview_var.get() and not self.fix_index_var.get():
+        if not self.sync_current_var.get() and not self.fix_preview_var.get() and not self.fix_index_var.get():
             messagebox.showinfo("没有选择修复项", "请至少选择一个修复项。")
             return
         confirm = messagebox.askyesno(
@@ -156,11 +158,14 @@ class SessionDoctorApp:
         self.refresh_paths()
         threads = load_threads(self.paths)
         summary = summarize_threads(threads)
+        current_config = load_current_config(self.paths)
         self._set_summary_from_scan(summary)
         lines = [
             "本地历史概况",
             "",
             f"Codex 数据目录: {self.paths.codex_home}",
+            f"当前 Provider: {current_config.model_provider or '未读取到'}",
+            f"当前模型: {current_config.model or '未读取到'}",
             f"数据库: {self.paths.db_path}",
             f"侧边栏索引: {self.paths.session_index_path}",
             "",
@@ -180,7 +185,7 @@ class SessionDoctorApp:
     def _diagnose_worker(self) -> str:
         self.refresh_paths()
         threads = load_threads(self.paths)
-        diagnoses = diagnose_threads(threads, load_session_meta(self.paths), load_session_index_ids(self.paths))
+        diagnoses = diagnose_threads(threads, load_session_meta(self.paths), load_session_index_ids(self.paths), current_config=load_current_config(self.paths))
         self.groups = group_diagnoses_by_project(diagnoses, threads)
         self._set_summary_from_diagnoses(len(diagnoses), len(self.groups))
         self._append_log(f"诊断完成：发现 {len(diagnoses)} 个问题，涉及 {len(self.groups)} 个项目。")
@@ -192,6 +197,9 @@ class SessionDoctorApp:
         backup_path = None
         if not dry_run:
             backup_path = create_backup(self.paths)
+        if self.sync_current_var.get():
+            current_config = load_current_config(self.paths)
+            changes.extend(sync_provider_model(self.paths, current_config.model_provider, current_config.model, dry_run=dry_run))
         if self.fix_preview_var.get():
             changes.extend(repair_previews(self.paths, dry_run=dry_run))
         if self.fix_index_var.get():

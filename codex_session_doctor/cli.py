@@ -12,8 +12,8 @@ import sys
 from .backup import create_backup
 from .diagnostics import diagnose_threads, format_project_report, group_diagnoses_by_project, summarize_threads
 from .paths import resolve_paths
-from .repair import rebuild_session_index, repair_cwd, repair_previews, set_provider_model
-from .scanner import load_session_index_ids, load_session_meta, load_threads
+from .repair import rebuild_session_index, repair_cwd, repair_previews, set_provider_model, sync_provider_model
+from .scanner import load_current_config, load_session_index_ids, load_session_meta, load_threads
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,6 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     repair.add_argument("--fix-preview", action="store_true", help="Fill empty previews from first user message or title.")
     repair.add_argument("--fix-index", action="store_true", help="Rebuild session_index.jsonl from SQLite threads.")
     repair.add_argument("--fix-cwd", action="store_true", help="Set selected threads to --project cwd and update rollout metadata.")
+    repair.add_argument("--sync-current", action="store_true", help="Sync provider/model to the current Codex config.")
     repair.add_argument("--set-provider", help="Set model_provider for all threads.")
     repair.add_argument("--set-model", help="Set model for all threads.")
     repair.add_argument("--yes", action="store_true", help="Required for real writes. Omit with --dry-run.")
@@ -66,10 +67,14 @@ def cmd_scan(args: argparse.Namespace, paths) -> int:
     threads = load_threads(paths)
     session_meta = load_session_meta(paths)
     session_index_ids = load_session_index_ids(paths)
+    current_config = load_current_config(paths)
     payload = {
         "codex_home": str(paths.codex_home),
+        "config_path": str(paths.config_path),
         "db_path": str(paths.db_path),
         "session_index_path": str(paths.session_index_path),
+        "current_provider": current_config.model_provider,
+        "current_model": current_config.model,
         "session_files": len(session_meta),
         "indexed_threads": len(session_index_ids),
         **summarize_threads(threads),
@@ -84,6 +89,7 @@ def cmd_diagnose(args: argparse.Namespace, paths) -> int:
         threads,
         load_session_meta(paths),
         load_session_index_ids(paths),
+        current_config=load_current_config(paths),
         project=args.project,
         include_subagents=args.include_subagents,
     )
@@ -107,8 +113,8 @@ def cmd_repair(args: argparse.Namespace, paths) -> int:
     if (args.set_provider and not args.set_model) or (args.set_model and not args.set_provider):
         print("--set-provider and --set-model must be used together", file=sys.stderr)
         return 2
-    if not any([args.fix_preview, args.fix_index, args.fix_cwd, args.set_provider]):
-        print("No repair selected. Use --fix-preview, --fix-index, --fix-cwd, or --set-provider/--set-model.", file=sys.stderr)
+    if not any([args.fix_preview, args.fix_index, args.fix_cwd, args.sync_current, args.set_provider]):
+        print("No repair selected. Use --fix-preview, --fix-index, --fix-cwd, --sync-current, or --set-provider/--set-model.", file=sys.stderr)
         return 2
     if not args.dry_run and not args.yes:
         print("Real writes require --yes. Use --dry-run to preview changes.", file=sys.stderr)
@@ -119,6 +125,12 @@ def cmd_repair(args: argparse.Namespace, paths) -> int:
     if not args.dry_run:
         backup_path = create_backup(paths)
 
+    if args.sync_current:
+        current_config = load_current_config(paths)
+        if not current_config.model_provider and not current_config.model:
+            print(f"Could not read model_provider/model from {paths.config_path}", file=sys.stderr)
+            return 2
+        changes.extend(sync_provider_model(paths, current_config.model_provider, current_config.model, dry_run=args.dry_run))
     if args.fix_preview:
         changes.extend(
             repair_previews(
@@ -128,8 +140,6 @@ def cmd_repair(args: argparse.Namespace, paths) -> int:
                 include_subagents=args.include_subagents,
             )
         )
-    if args.fix_index:
-        changes.extend(rebuild_session_index(paths, dry_run=args.dry_run))
     if args.fix_cwd:
         changes.extend(
             repair_cwd(
@@ -143,6 +153,8 @@ def cmd_repair(args: argparse.Namespace, paths) -> int:
         )
     if args.set_provider:
         changes.extend(set_provider_model(paths, args.set_provider, args.set_model, dry_run=args.dry_run))
+    if args.fix_index:
+        changes.extend(rebuild_session_index(paths, dry_run=args.dry_run))
 
     payload = {
         "dry_run": args.dry_run,

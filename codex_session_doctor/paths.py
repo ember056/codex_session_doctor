@@ -7,6 +7,7 @@ from pathlib import Path
 @dataclass(frozen=True)
 class CodexPaths:
     codex_home: Path
+    config_path: Path
     db_path: Path
     session_index_path: Path
     sessions_dir: Path
@@ -18,6 +19,7 @@ def resolve_paths(codex_home: str | None = None) -> CodexPaths:
     home = Path(codex_home).expanduser() if codex_home else Path.home() / ".codex"
     return CodexPaths(
         codex_home=home,
+        config_path=home / "config.toml",
         db_path=home / "state_5.sqlite",
         session_index_path=home / "session_index.jsonl",
         sessions_dir=home / "sessions",
@@ -47,4 +49,3 @@ def normalize_path_for_compare(path: str | None) -> str:
     while "\\\\" in value and not value.startswith("\\\\"):
         value = value.replace("\\\\", "\\")
     return value.rstrip("\\").lower()
-

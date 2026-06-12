@@ -43,3 +43,8 @@ class Diagnosis:
     message: str
     repair: str
 
+
+@dataclass(frozen=True)
+class CurrentConfig:
+    model_provider: str | None
+    model: str | None

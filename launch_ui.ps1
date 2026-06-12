@@ -17,20 +17,55 @@ $script:IconLocation = 'C:\Windows\System32\imageres.dll,15'
 $script:LatestScan = $null
 $script:LatestDiagnose = $null
 
+function Get-PythonLauncher {
+  $pyCommand = Get-Command py -ErrorAction SilentlyContinue
+  if ($pyCommand) {
+    $oldPreference = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = 'Continue'
+      $versionOutput = & py -3 --version 2>&1
+      if ($LASTEXITCODE -eq 0) {
+        return @{ Command = 'py'; Prefix = @('-3') }
+      }
+    } finally {
+      $ErrorActionPreference = $oldPreference
+    }
+  }
+
+  $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
+  if ($pythonCommand) {
+    $oldPreference = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = 'Continue'
+      $versionOutput = & python --version 2>&1
+      if ($LASTEXITCODE -eq 0) {
+        return @{ Command = 'python'; Prefix = @() }
+      }
+    } finally {
+      $ErrorActionPreference = $oldPreference
+    }
+  }
+
+  throw '未找到可用的 Python。请安装 Python 3.10+，或确认 py/python 命令可用。'
+}
+
 function Invoke-Doctor {
   param(
     [Parameter(Mandatory = $true)]
     [string[]]$Arguments
   )
 
-  $commandArgs = @('-3', '-m', 'codex_session_doctor')
+  $python = Get-PythonLauncher
+  $commandArgs = @()
+  $commandArgs += $python.Prefix
+  $commandArgs += @('-m', 'codex_session_doctor')
   if ($CodexHome) {
     $commandArgs += @('--codex-home', $CodexHome)
   }
   $commandArgs += '--json'
   $commandArgs += $Arguments
 
-  $output = & py @commandArgs 2>&1
+  $output = & $python.Command @commandArgs 2>&1
   $exitCode = $LASTEXITCODE
   $text = (($output | ForEach-Object { "$_" }) -join [Environment]::NewLine).Trim()
   if (-not $text) {
@@ -175,7 +210,7 @@ function Apply-Scan {
 
   $codexHome = if ($CodexHome) { $CodexHome } else { $Scan.codex_home }
   $pathLabel.Text = "数据位置: $codexHome"
-  $summaryLabel.Text = "历史线程: $($Scan.total_threads)    未归档: $($Scan.active_threads)    已归档: $($Scan.archived_threads)    侧边栏索引: $($Scan.indexed_threads)"
+  $summaryLabel.Text = "当前 Provider: $($Scan.current_provider)    当前模型: $($Scan.current_model)    历史线程: $($Scan.total_threads)    侧边栏索引: $($Scan.indexed_threads)"
   $repairLabel.Text = "待关注: 缺少预览 $($Scan.empty_preview_threads) 条    会话文件不存在 $($Scan.missing_rollout_files) 条"
   $statusLabel.Text = Get-FriendlyStatus
 
@@ -262,6 +297,9 @@ function Get-RepairArgs {
   }
   if ($indexCheck.Checked) {
     $args += '--fix-index'
+  }
+  if ($syncCurrentCheck.Checked) {
+    $args += '--sync-current'
   }
   return $args
 }
@@ -376,12 +414,12 @@ $shortcutButton.Size = New-Object System.Drawing.Size(130, 36)
 $shortcutButton.Location = New-Object System.Drawing.Point(676, 220)
 $form.Controls.Add($shortcutButton)
 
-$previewCheck = New-Object System.Windows.Forms.CheckBox
-$previewCheck.Text = '补齐侧边栏预览'
-$previewCheck.Checked = $true
-$previewCheck.AutoSize = $true
-$previewCheck.Location = New-Object System.Drawing.Point(824, 222)
-$form.Controls.Add($previewCheck)
+$syncCurrentCheck = New-Object System.Windows.Forms.CheckBox
+$syncCurrentCheck.Text = '同步当前 Provider/模型'
+$syncCurrentCheck.Checked = $true
+$syncCurrentCheck.AutoSize = $true
+$syncCurrentCheck.Location = New-Object System.Drawing.Point(824, 198)
+$form.Controls.Add($syncCurrentCheck)
 
 $indexCheck = New-Object System.Windows.Forms.CheckBox
 $indexCheck.Text = '合并侧边栏索引'
@@ -389,6 +427,13 @@ $indexCheck.Checked = $true
 $indexCheck.AutoSize = $true
 $indexCheck.Location = New-Object System.Drawing.Point(824, 246)
 $form.Controls.Add($indexCheck)
+
+$previewCheck = New-Object System.Windows.Forms.CheckBox
+$previewCheck.Text = '补齐侧边栏预览'
+$previewCheck.Checked = $true
+$previewCheck.AutoSize = $true
+$previewCheck.Location = New-Object System.Drawing.Point(824, 222)
+$form.Controls.Add($previewCheck)
 
 $projectsBox = New-Object System.Windows.Forms.GroupBox
 $projectsBox.Text = '按项目分组的问题'
@@ -465,7 +510,7 @@ $dryRunButton.Add_Click({
 
 $repairButton.Add_Click({
   try {
-    if (-not $previewCheck.Checked -and -not $indexCheck.Checked) {
+    if (-not $syncCurrentCheck.Checked -and -not $previewCheck.Checked -and -not $indexCheck.Checked) {
       [System.Windows.Forms.MessageBox]::Show('请至少选择一个修复项。', '没有选择修复项', 'OK', 'Warning') | Out-Null
       return
     }
@@ -518,6 +563,7 @@ $shortcutButton.Add_Click({
 })
 
 if ($SmokeTest) {
+  [void](Get-PythonLauncher)
   Write-Output 'Smoke test passed.'
   exit 0
 }
