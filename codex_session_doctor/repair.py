@@ -70,10 +70,14 @@ def rebuild_session_index(paths: CodexPaths, dry_run: bool = True, include_archi
             from datetime import UTC, datetime
 
             timestamp = datetime.fromtimestamp(updated, tz=UTC).isoformat().replace("+00:00", "Z")
+        existing = entries_by_id.get(thread.id)
+        thread_name = ""
+        if existing:
+            thread_name = str(existing.get("thread_name") or "")
         entries_by_id[thread.id] = {
             "id": thread.id,
-            "thread_name": thread.title or thread.first_user_message or thread.id,
-            "updated_at": timestamp,
+            "thread_name": thread_name or thread.title or thread.first_user_message or thread.id,
+            "updated_at": timestamp or (str(existing.get("updated_at") or "") if existing else ""),
         }
     entries = list(entries_by_id.values())
     changed.append(f"session_index.jsonl <- {len(entries)} entries (was {before_count})")

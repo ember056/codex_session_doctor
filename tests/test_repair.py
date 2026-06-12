@@ -116,6 +116,22 @@ class RepairTests(unittest.TestCase):
             self.assertEqual("t1", item["id"])
             self.assertEqual("Title", item["thread_name"])
 
+    def test_rebuild_session_index_preserves_existing_renamed_title(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self.make_paths(Path(tmp))
+            self.init_db(paths.db_path)
+            paths.session_index_path.write_text(
+                json.dumps({"id": "t1", "thread_name": "My renamed session", "updated_at": "old"}, ensure_ascii=False)
+                + "\n",
+                encoding="utf-8",
+            )
+
+            rebuild_session_index(paths, dry_run=False)
+
+            item = json.loads(paths.session_index_path.read_text(encoding="utf-8").splitlines()[0])
+            self.assertEqual("t1", item["id"])
+            self.assertEqual("My renamed session", item["thread_name"])
+
     def test_sync_provider_model_updates_database_and_session_meta(self):
         with tempfile.TemporaryDirectory() as tmp:
             paths = self.make_paths(Path(tmp))
