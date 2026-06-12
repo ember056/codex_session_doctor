@@ -114,21 +114,55 @@ def group_diagnoses_by_project(diagnoses: list[Diagnosis], threads: list[ThreadR
 
 def format_project_report(groups: list[dict[str, object]]) -> str:
     if not groups:
-        return "No issues found."
+        return "未发现需要修复的问题。"
 
     lines: list[str] = []
     for group in groups:
-        lines.append(f"Project: {group['cwd']}")
-        lines.append(f"  Issues: {group['issue_count']}")
+        lines.append(f"项目目录: {group['cwd']}")
+        lines.append(f"  问题数: {group['issue_count']}")
         codes = group.get("codes", {})
         if codes:
-            summary = ", ".join(f"{code}={count}" for code, count in sorted(codes.items()))
-            lines.append(f"  Summary: {summary}")
+            summary = "，".join(f"{describe_issue_code(code)}={count}" for code, count in sorted(codes.items()))
+            lines.append(f"  概览: {summary}")
         for thread in group.get("threads", []):
             title = str(thread.get("title") or thread.get("id"))
-            lines.append(f"  Thread: {title}")
+            lines.append(f"  会话: {title}")
             lines.append(f"    id: {thread['id']}")
             for issue in thread.get("issues", []):
-                lines.append(f"    - [{issue['code']}] {issue['message']} -> {issue['repair']}")
+                lines.append(
+                    f"    - [{describe_issue_code(issue['code'])}] "
+                    f"{translate_issue_message(issue['code'], issue['message'])} -> {describe_repair(issue['repair'])}"
+                )
         lines.append("")
     return "\n".join(lines).rstrip()
+
+
+def describe_issue_code(code: str) -> str:
+    return {
+        "missing-rollout-path": "缺少会话文件路径",
+        "missing-rollout-file": "会话文件不存在",
+        "empty-preview": "缺少侧边栏预览",
+        "missing-index-entry": "缺少侧边栏索引",
+        "cwd-mismatch": "项目目录不一致",
+        "missing-session-meta": "缺少会话元数据",
+    }.get(code, code)
+
+
+def translate_issue_message(code: str, fallback: str) -> str:
+    return {
+        "missing-rollout-path": "数据库记录没有 rollout_path，会话文件位置未知。",
+        "missing-rollout-file": "数据库指向的会话文件不存在。",
+        "empty-preview": "preview 为空，Codex 侧边栏可能不会显示这个会话。",
+        "missing-index-entry": "这个会话没有写入 session_index.jsonl。",
+        "cwd-mismatch": "SQLite 里的项目目录和会话文件首行元数据不一致。",
+        "missing-session-meta": "会话文件第一行没有可读取的 session_meta。",
+    }.get(code, fallback)
+
+
+def describe_repair(repair: str) -> str:
+    return {
+        "fix-preview": "补齐预览",
+        "fix-index": "合并索引",
+        "fix-cwd": "修正项目目录",
+        "manual": "需要手动检查",
+    }.get(repair, repair)

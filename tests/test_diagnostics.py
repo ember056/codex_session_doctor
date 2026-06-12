@@ -54,8 +54,8 @@ class DiagnosticTests(unittest.TestCase):
         diagnoses = diagnose_threads(threads, {}, {"t1", "t2", "t3"})
         groups = group_diagnoses_by_project(diagnoses, threads)
         report = format_project_report(groups)
-        self.assertIn(r"Project: \\?\C:\ProjectA", report)
-        self.assertIn("empty-preview", report)
+        self.assertIn(r"项目目录: \\?\C:\ProjectA", report)
+        self.assertIn("缺少侧边栏预览", report)
         self.assertEqual(2, len(groups))
 
 

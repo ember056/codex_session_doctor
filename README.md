@@ -39,7 +39,19 @@ py -3 -m codex_session_doctor repair --fix-preview --fix-index
 py -3 -m codex_session_doctor --json scan
 ```
 
-On Windows, you can also launch the graphical interface:
+On Windows, the recommended graphical interface is the PowerShell WinForms launcher:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\launch_ui.ps1
+```
+
+Create a desktop shortcut:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\launch_ui.ps1 -InstallShortcutOnly
+```
+
+There is also a cross-platform Tkinter GUI:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\launch_gui.ps1
@@ -91,9 +103,21 @@ Project: \\?\C:\Users\bobo\Desktop\Onecall
     - [empty-preview] Preview is empty; the sidebar may hide this thread. -> fix-preview
 ```
 
-## GUI
+## Windows GUI
 
-The GUI is built with Python's standard `tkinter` library, so it does not require extra packages.
+The primary Windows GUI is `launch_ui.ps1`. It follows the same practical layout as small Windows recovery tools:
+
+- status summary at the top
+- one-click scan and diagnosis
+- project-grouped issue list
+- detailed report area
+- operation log
+- dry-run before real repair
+- backup directory and desktop shortcut buttons
+
+## Tkinter GUI
+
+The Tkinter GUI is built with Python's standard library, so it does not require extra packages and can also run outside Windows.
 
 It can:
 
