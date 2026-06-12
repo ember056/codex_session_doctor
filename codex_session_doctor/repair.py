@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+"""Repair operations for local Codex Desktop metadata.
+
+修复本地 Codex Desktop 元数据的操作，所有真实写入都应先由调用方创建备份。
+"""
+
 import json
 import sqlite3
 from pathlib import Path
@@ -16,6 +21,10 @@ def build_preview(thread: ThreadRecord, limit: int = 500) -> str:
 
 
 def repair_previews(paths: CodexPaths, project: str | None = None, dry_run: bool = True, include_subagents: bool = False) -> list[str]:
+    """Fill empty preview fields from the first user message or title.
+
+    用首条用户消息或标题补齐空 preview，避免侧边栏过滤这些会话。
+    """
     threads = load_threads(paths)
     project_cwd = add_windows_long_path_prefix(str(Path(project))) if project else None
     changed: list[str] = []
@@ -42,6 +51,10 @@ def repair_previews(paths: CodexPaths, project: str | None = None, dry_run: bool
 
 
 def rebuild_session_index(paths: CodexPaths, dry_run: bool = True, include_archived: bool = False) -> list[str]:
+    """Merge SQLite threads into session_index.jsonl without dropping existing entries.
+
+    将 SQLite 里的会话合并到 session_index.jsonl，同时保留已有索引项。
+    """
     threads = load_threads(paths)
     entries_by_id = _read_existing_session_index(paths)
     before_count = len(entries_by_id)

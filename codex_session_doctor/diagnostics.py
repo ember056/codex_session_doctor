@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+"""Diagnosis rules and project-grouped reports.
+
+诊断规则与按项目分组的报告生成逻辑。
+"""
+
 from collections import Counter
 
 from .models import Diagnosis, SessionMeta, ThreadRecord
@@ -13,6 +18,10 @@ def diagnose_threads(
     project: str | None = None,
     include_subagents: bool = False,
 ) -> list[Diagnosis]:
+    """Return sidebar visibility and metadata consistency issues.
+
+    返回可能导致侧边栏不显示、元数据不一致的诊断问题。
+    """
     project_key = normalize_path_for_compare(project)
     output: list[Diagnosis] = []
     for thread in threads:
@@ -63,6 +72,10 @@ def summarize_threads(threads: list[ThreadRecord]) -> dict[str, object]:
 
 
 def group_diagnoses_by_project(diagnoses: list[Diagnosis], threads: list[ThreadRecord]) -> list[dict[str, object]]:
+    """Group issues by project cwd for human-friendly reports.
+
+    按项目目录 cwd 汇总问题，便于用户定位哪个项目的历史需要修复。
+    """
     threads_by_id = {thread.id: thread for thread in threads}
     groups: dict[str, dict[str, object]] = {}
     for diagnosis in diagnoses:

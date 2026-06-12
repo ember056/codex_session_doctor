@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+"""Readers for local Codex Desktop history files.
+
+读取本地 Codex Desktop 的 SQLite、session_index.jsonl 和 rollout JSONL 元数据。
+"""
+
 import json
 import sqlite3
 from pathlib import Path

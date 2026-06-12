@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+"""Tkinter graphical interface.
+
+跨平台 Tkinter 图形界面；Windows 用户优先使用 launch_ui.ps1。
+"""
+
 import os
 import queue
 import threading

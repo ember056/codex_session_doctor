@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+"""Command line entrypoint.
+
+命令行入口：负责 scan / diagnose / repair / gui 四类命令的参数解析和输出。
+"""
+
 import argparse
 import json
 import sys
