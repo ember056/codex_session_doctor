@@ -1,6 +1,6 @@
 import unittest
 
-from codex_session_doctor.diagnostics import diagnose_threads
+from codex_session_doctor.diagnostics import format_project_report, group_diagnoses_by_project, diagnose_threads
 from codex_session_doctor.models import SessionMeta, ThreadRecord
 
 
@@ -44,6 +44,19 @@ class DiagnosticTests(unittest.TestCase):
     def test_subagent_is_skipped_by_default(self):
         result = diagnose_threads([thread(source='{"subagent":{"other":"guardian"}}', preview="")], {}, set())
         self.assertEqual([], result)
+
+    def test_group_project_report(self):
+        threads = [
+            thread(id="t1", title="One", cwd=r"\\?\C:\ProjectA", preview=""),
+            thread(id="t2", title="Two", cwd=r"\\?\C:\ProjectA", preview="", rollout_path="x"),
+            thread(id="t3", title="Three", cwd=r"\\?\C:\ProjectB", preview=""),
+        ]
+        diagnoses = diagnose_threads(threads, {}, {"t1", "t2", "t3"})
+        groups = group_diagnoses_by_project(diagnoses, threads)
+        report = format_project_report(groups)
+        self.assertIn(r"Project: \\?\C:\ProjectA", report)
+        self.assertIn("empty-preview", report)
+        self.assertEqual(2, len(groups))
 
 
 if __name__ == "__main__":

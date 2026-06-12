@@ -5,7 +5,7 @@ import json
 import sys
 
 from .backup import create_backup
-from .diagnostics import diagnose_threads, summarize_threads
+from .diagnostics import diagnose_threads, format_project_report, group_diagnoses_by_project, summarize_threads
 from .paths import resolve_paths
 from .repair import rebuild_session_index, repair_cwd, repair_previews, set_provider_model
 from .scanner import load_session_index_ids, load_session_meta, load_threads
@@ -18,6 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("scan", help="Print a compact summary of local Codex history data.")
+    subparsers.add_parser("gui", help="Open the Windows-friendly graphical interface.")
 
     diagnose = subparsers.add_parser("diagnose", help="Print detected problems and suggested repairs.")
     diagnose.add_argument("--project", help="Limit diagnostics to a project cwd.")
@@ -48,6 +49,11 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_diagnose(args, paths)
     if args.command == "repair":
         return cmd_repair(args, paths)
+    if args.command == "gui":
+        from .gui import run_gui
+
+        run_gui(str(paths.codex_home))
+        return 0
     raise AssertionError(args.command)
 
 
@@ -76,10 +82,15 @@ def cmd_diagnose(args: argparse.Namespace, paths) -> int:
         project=args.project,
         include_subagents=args.include_subagents,
     )
+    groups = group_diagnoses_by_project(diagnoses, threads)
     payload = {
         "count": len(diagnoses),
         "diagnoses": [diagnosis.__dict__ for diagnosis in diagnoses],
+        "projects": groups,
     }
+    if not args.json:
+        print(format_project_report(groups))
+        return 1 if diagnoses else 0
     print_output(payload, args.json)
     return 1 if diagnoses else 0
 
@@ -157,4 +168,3 @@ def print_output(payload: dict, as_json: bool) -> None:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

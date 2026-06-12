@@ -61,3 +61,74 @@ def summarize_threads(threads: list[ThreadRecord]) -> dict[str, object]:
         "cwd_counts": cwd_counts.most_common(20),
     }
 
+
+def group_diagnoses_by_project(diagnoses: list[Diagnosis], threads: list[ThreadRecord]) -> list[dict[str, object]]:
+    threads_by_id = {thread.id: thread for thread in threads}
+    groups: dict[str, dict[str, object]] = {}
+    for diagnosis in diagnoses:
+        thread = threads_by_id.get(diagnosis.thread_id)
+        cwd = thread.cwd if thread and thread.cwd else "(unknown project)"
+        group = groups.setdefault(
+            cwd,
+            {
+                "cwd": cwd,
+                "issue_count": 0,
+                "codes": Counter(),
+                "threads": {},
+            },
+        )
+        group["issue_count"] = int(group["issue_count"]) + 1
+        group["codes"][diagnosis.code] += 1
+        grouped_threads = group["threads"]
+        item = grouped_threads.setdefault(
+            diagnosis.thread_id,
+            {
+                "id": diagnosis.thread_id,
+                "title": thread.title if thread else diagnosis.thread_id,
+                "updated_at": thread.updated_at if thread else 0,
+                "issues": [],
+            },
+        )
+        item["issues"].append(
+            {
+                "code": diagnosis.code,
+                "message": diagnosis.message,
+                "repair": diagnosis.repair,
+            }
+        )
+
+    output: list[dict[str, object]] = []
+    for group in groups.values():
+        codes = group["codes"]
+        grouped_threads = group["threads"]
+        output.append(
+            {
+                "cwd": group["cwd"],
+                "issue_count": group["issue_count"],
+                "codes": dict(codes),
+                "threads": sorted(grouped_threads.values(), key=lambda item: int(item["updated_at"]), reverse=True),
+            }
+        )
+    return sorted(output, key=lambda item: int(item["issue_count"]), reverse=True)
+
+
+def format_project_report(groups: list[dict[str, object]]) -> str:
+    if not groups:
+        return "No issues found."
+
+    lines: list[str] = []
+    for group in groups:
+        lines.append(f"Project: {group['cwd']}")
+        lines.append(f"  Issues: {group['issue_count']}")
+        codes = group.get("codes", {})
+        if codes:
+            summary = ", ".join(f"{code}={count}" for code, count in sorted(codes.items()))
+            lines.append(f"  Summary: {summary}")
+        for thread in group.get("threads", []):
+            title = str(thread.get("title") or thread.get("id"))
+            lines.append(f"  Thread: {title}")
+            lines.append(f"    id: {thread['id']}")
+            for issue in thread.get("issues", []):
+                lines.append(f"    - [{issue['code']}] {issue['message']} -> {issue['repair']}")
+        lines.append("")
+    return "\n".join(lines).rstrip()
